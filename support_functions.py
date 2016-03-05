@@ -116,3 +116,125 @@ def process():
     #     pass
 
     pass
+
+
+# def run_RNN(train_data, train_labels, test_data, test_labels):
+#     from keras.callbacks import EarlyStopping
+#     rnn = 'SimpleRNN'
+#     early_stopping = EarlyStopping(monitor='val_error', patience=1)
+#
+#     if run_mode == 1: # classification mode
+#         model = Sequential()
+#         model.add(getattr(layers, rnn)(512, input_shape=(time_series_length, train_data.shape[2]), return_sequences=False))
+#         model.add(Dense(2, activation='softmax'))
+#
+#         model.load_weights(
+#             'models/models_weights_windows_' + str(window_size) + '_time_length_' + str(time_series_length) + '.h5')
+#
+#         model.compile(loss='binary_crossentropy', optimizer='adagrad')
+#
+#         # model.fit(train_data, train_labels, batch_size=batch_size, nb_epoch=nb_epochs,
+#         #       callbacks=[early_stopping],validation_data=(test_data, test_labels),show_accuracy=True)
+#         #
+#         # model.save_weights('models/models_weights_windows_' + str(window_size) + '_time_length_' + str(time_series_length)+'.h5', overwrite=True)
+#
+#         predict_Y = model.predict_classes(test_data)
+#         predict_Y_proba = model.predict_proba(test_data)
+#         [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba, test_labels)
+#
+#         return predict_Y, predict_Y_proba, [precision, recall, fscore]
+#
+#     else: # regression mode
+#         model = Sequential()
+#         model.add(
+#             getattr(layers, rnn)(512, input_shape=(time_series_length, train_data.shape[2]), return_sequences=False))
+#         model.add(Dense(1))
+#         model.compile(loss='mse', optimizer='adagrad')
+#
+#         model.fit(train_data, train_labels, batch_size=batch_size, nb_epoch=nb_epochs,
+#               callbacks=[early_stopping],validation_data=(test_data, test_labels))
+#
+#         predict_Y = model.predict(test_data)
+#
+#         from sklearn.metrics import mean_squared_error
+#         mse = mean_squared_error(test_labels, predict_Y)
+#
+#         print "mean squared error: " + str(mse)
+#
+#     pass
+
+#--------------------------
+# Convert data to recurrent network
+
+# in read data
+
+# from keras.utils import np_utils
+#
+# if run_rnn_mode == 1:
+#
+#         station_values = {}
+#
+#         for s in stations:
+#             station_values[s] = Y[data[:, station_index] == s]
+#
+#         X_new = []
+#         Y_new = []
+#
+#         for station in stations:
+#             nearby_stations = get_nearby_stations(station, 3)
+#
+#             for i, y in enumerate(station_values[station]):
+#                 if i - 50 < 0: continue
+#
+#                 range_indices = range(i-time_series_length,i)
+#
+#                 station_own_values = X[range(i - time_series_length + station_start_indices[station][0],
+#                                              i + station_start_indices[station][0]), :]
+#
+#                 if nearby_station_mode:
+#                     nearby_stations_value = np.transpose([station_values[s][range_indices] for s in nearby_stations])
+#                     values = np.append(station_own_values, nearby_stations_value, axis=1)
+#                 else:
+#                     values = station_own_values
+#
+#                 X_new.append(values)
+#                 Y_new.append(y)
+#
+#         X = np.array(X_new)
+#         Y = np.array(Y_new)
+#
+#         print Y.shape, Y[0]
+#
+#         if run_mode == 1:
+#             Y = np_utils.to_categorical(Y,2)
+#
+#         return X, Y
+#
+#     else:
+
+# read_data(window_size)
+    # process_data(minority_scale)
+    #
+    # if run_rnn_mode == 1:
+    #     run_RNN()
+    # else:
+    #     run_RandomForest()
+
+    # list_results = np.empty((len(thresholds),3))
+    #
+    # for i, rain_threshold in enumerate(thresholds):
+    #
+    #     list_results[i,:] = run_RandomForest()
+    #
+    # # # print different window size
+    # plt.figure(2)
+    # plt.plot(thresholds, list_results[:,0], label='precision')
+    # plt.plot(thresholds, list_results[:,1], label='recall')
+    # plt.plot(thresholds, list_results[:,2], label='fscore')
+    # plt.xlabel('Threshold Size')
+    # plt.ylabel('Percent')
+    # plt.title('Precision, Recall, F1')
+    # plt.legend(loc='best')
+    # plt.savefig('images/Result_with_Thresholds.png')
+    #
+    # print list_results

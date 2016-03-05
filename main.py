@@ -7,16 +7,7 @@ mpl.use('Agg')
 
 import matplotlib.pyplot as plt
 
-from keras.models import Sequential
-from keras.layers.core import Dense
-from keras.callbacks import EarlyStopping
-from keras import layers
-from keras.utils import np_utils
-
-from support_functions import *
-
 # plt.close('all')
-
 
 # Global variables
 train_data = []
@@ -29,18 +20,18 @@ Y = []
 station = []
 
 # optional variables
+run_mode = 0  # 1: for classify mode, 2: for regression mode
+filter_data = 1 #  USEFUL
+add_change_data = 0 # NOT USEFUL
+use_window_mode = 1 # USEFUL for X, Y raw data
+convert_1_hour_period = 0  # 1: if convert to one hour period, NOT USEFUL
+
 visualize = 0
-sample_mode = 0  # 1: undersample, 2: oversample
-convert_1_hour_period = 0  # 1: if convert to one hour period, not necessary
-filter_data = 1
 test_mode = 0
 run_rnn_mode = 0
-nearby_station_mode = 1 # 1 if consider nearby station RAIN values
-run_mode = 1  # 1: for classify mode, 2: for regression mode
 
 n_features = 0
 minority_scale = 1
-rain_threshold = 0.4  # inch 0.4 in = 1 cm
 
 # Hyper-parameter variables
 time_series_length = 50
@@ -109,7 +100,7 @@ def read_data(window_size=6):  # read data and load into global variables
 
     if run_mode == 1:
         Y = (real_Y > 0).astype(int)
-    elif run_mode == 2:
+    else:
         Y = real_Y
 
     # convert to 1 hour period
@@ -141,18 +132,18 @@ def read_data(window_size=6):  # read data and load into global variables
 
     temp_list = []
 
-    # get and add change feature to list feature
-    for i, feature in enumerate(list_features):
+    if add_change_data:
+        # get and add change feature to list feature
+        for i, feature in enumerate(list_features):
 
-        feature_data = X[:, i]
-        change_feature = np.reshape(get_changes(feature_data), (n_rows,1))
+            feature_data = X[:, i]
+            from support_functions import get_changes
+            change_feature = np.reshape(get_changes(feature_data), (n_rows,1))
 
-        X = np.append(X, change_feature,1)
-        temp_list.append('C'+feature)
+            X = np.append(X, change_feature,1)
+            temp_list.append('C'+feature)
 
-    list_features.append(temp_list)
-
-    # visualize_data('RAIN', Y)
+        list_features.append(temp_list)
 
     # Filter Features
     if filter_data:
@@ -167,66 +158,35 @@ def read_data(window_size=6):  # read data and load into global variables
     # end filter Features
 
     # add window size
-    if window_size != 0:
-        Y_new = np.zeros(Y.shape)
+    if use_window_mode:
+        Y_new = []
+
         for i, _ in enumerate(Y):
-            print str(i)+'/'+str(len(Y))
+            # print str(i)+'/'+str(len(Y))
 
             Y_sum = 0
             for k in range(-window_size, window_size):
                 if i + k < 0 or i + k >= X.shape[0]: continue
                 Y_sum += Y[i+k]
 
-            if run_mode == 1:
-                Y_new[i] = Y_sum > rain_threshold
-            else:
-                Y_new[i] = Y_sum
+            Y_new.append(Y_sum)
 
-        Y = np.copy(Y_new)
+        if run_mode == 1:
+            Y = (np.array(Y_new) > 0).astype(int)
+        else:
+            Y = np.array(Y_new)
 
-    # convert the data to Recurrent Network
-
-    station_values = {}
-    for s in stations:
-        station_values[s] = data[data[:, station_index] == s, rain_index]
 
     station_start_indices = {}
     for s in stations:
         station_start_indices[s] = np.where(
             (data[:, station_index] == s) & (data[:, date_index] == start_date) & (data[:, time_index] == 0))
 
-    if run_rnn_mode == 1:
-
-        X_new = []
-        Y_new = []
-
-        for station in stations:
-            nearby_stations = get_nearby_stations(station, 3)
-
-            for i, y in enumerate(station_values[station]):
-                if i - 50 < 0: continue
-
-                range_indices = range(i-time_series_length,i)
-
-                station_own_values = X[range(i - time_series_length + station_start_indices[station],
-                                             i + station_start_indices[station]), :]
-
-                if nearby_station_mode:
-                    nearby_stations_value = np.transpose([station_values[s][range_indices] for s in nearby_stations])
-                    values = np.append(station_own_values, nearby_stations_value, axis=1)
-                else:
-                    values = station_own_values
-
-                X_new.append(values)
-                Y_new.append(y)
-
-        X = np.array(X_new)
-        Y = np.array(Y_new)
-
-        if run_mode == 1:
-            Y = np_utils.to_categorical(Y, 2)
-
     # Add data for model 2
+
+    station_values = {}
+    for s in stations:
+        station_values[s] = data[data[:, station_index] == s, rain_index]
 
     X_new = []
     Y_new = []
@@ -321,7 +281,7 @@ def process_data(X, Y, permutation, minority_scale=1):
     return train_data, train_labels, test_data, test_labels
 
 
-def find_important_features(window_size):
+def find_important_features(train_data, train_labels, test_data, test_labels, window_size):
     from sklearn.ensemble import RandomForestClassifier
     # train by Random Forest
     clf = RandomForestClassifier(n_estimators=10, max_depth=None, min_samples_split=1, random_state=0)
@@ -365,7 +325,7 @@ def find_important_features(window_size):
 def compute_metrics(predict_Y, predict_Y_proba, test_labels):
     if run_rnn_mode:
         temp_test_labels = np.argmax(test_labels, axis=1)
-        predict_Y_proba = predict_Y_proba[:, temp_test_labels]
+        predict_Y_proba = predict_Y_proba[:,1]
     else:
         temp_test_labels = test_labels
 
@@ -412,7 +372,7 @@ def run_RandomForest(train_data, train_labels, test_data, test_labels):
 
         return predict_Y, predict_Y_proba, [precision, recall, fscore]
 
-    elif run_mode == 2: # Regression Mode
+    else: # Regression Mode
         clf = RandomForestRegressor()
         predict_Y = clf.fit(train_data, train_labels).predict(test_data)
 
@@ -425,85 +385,12 @@ def run_RandomForest(train_data, train_labels, test_data, test_labels):
         return mse
 
 
-def run_RNN(train_data, train_labels, test_data, test_labels):
-
-    rnn = 'SimpleRNN'
-    early_stopping = EarlyStopping(monitor='val_error', patience=1)
-
-    if run_mode == 1: # classification mode
-        model = Sequential()
-        model.add(getattr(layers, rnn)(512, input_shape=(time_series_length, train_data.shape[2]), return_sequences=False))
-        model.add(Dense(2, activation='softmax'))
-
-        model.load_weights(
-            'models/models_weights_windows_' + str(window_size) + '_time_length_' + str(time_series_length) + '.h5')
-
-        model.compile(loss='binary_crossentropy', optimizer='adagrad')
-
-        # model.fit(train_data, train_labels, batch_size=batch_size, nb_epoch=nb_epochs,
-        #       callbacks=[early_stopping],validation_data=(test_data, test_labels),show_accuracy=True)
-
-        # model.save_weights('models/models_weights_windows_' + str(window_size) + '_time_length_' + str(time_series_length)+'.h5')
-
-        predict_Y = model.predict_classes(test_data)
-        predict_Y_proba = model.predict_proba(test_data)
-        [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba, test_labels)
-
-        return predict_Y, predict_Y_proba, [precision, recall, fscore]
-
-    else: # regression mode
-        model = Sequential()
-        model.add(
-            getattr(layers, rnn)(512, input_shape=(time_series_length, train_data.shape[2]), return_sequences=False))
-        model.add(Dense(1))
-        model.compile(loss='mse', optimizer='adagrad')
-
-        model.fit(train_data, train_labels, batch_size=batch_size, nb_epoch=nb_epochs,
-              callbacks=[early_stopping],validation_data=(test_data, test_labels))
-
-        predict_Y = model.predict(test_data)
-
-        from sklearn.metrics import mean_squared_error
-        mse = mean_squared_error(test_labels, predict_Y)
-
-        print "mean squared error: " + str(mse)
-
-    pass
-
-
 if __name__ == "__main__":
 
     np.random.seed(1991)
     window_sizes = range(0,30)
 
     thresholds = range(0, 10)
-
-    # read_data(window_size)
-    # process_data(minority_scale)
-    #
-    # if run_rnn_mode == 1:
-    #     run_RNN()
-    # else:
-    #     run_RandomForest()
-
-    # list_results = np.empty((len(thresholds),3))
-    #
-    # for i, rain_threshold in enumerate(thresholds):
-    #
-    #     list_results[i,:] = run_RandomForest()
-    #
-    # # # print different window size
-    # plt.figure(2)
-    # plt.plot(thresholds, list_results[:,0], label='precision')
-    # plt.plot(thresholds, list_results[:,1], label='recall')
-    # plt.plot(thresholds, list_results[:,2], label='fscore')
-    # plt.xlabel('Threshold Size')
-    # plt.ylabel('Percent')
-    # plt.title('Precision, Recall, F1')
-    # plt.legend(loc='best')
-    # plt.savefig('images/Result_with_Thresholds.png')
-    #
-    # print list_results
 
     X, Y, X_2, Y_2, X_3, Y_3 = read_data()
 
@@ -512,14 +399,16 @@ if __name__ == "__main__":
     print("Run with Station own data only")
     train_data, train_labels, test_data, test_labels = process_data(X, Y, permutation)
 
-    predict_Y, predict_Y_proba, _ = run_RandomForest(train_data, train_labels, test_data, test_labels)
+    run_RandomForest(train_data, train_labels, test_data, test_labels)
 
     print("Run with Nearby Stations data")
     train_data, train_labels, test_data, test_labels = process_data(X_2, Y_2, permutation)
 
-    predict_Y_2, predict_Y_2_proba, _ = run_RandomForest(train_data, train_labels, test_data, test_labels)
+    run_RandomForest(train_data, train_labels, test_data, test_labels)
 
-    print("Combine 2 result internally")
+    print("Combine 2 results internally")
     train_data, train_labels, test_data, test_labels = process_data(X_3, Y_3, permutation)
 
-    predict_Y_3, predict_Y_3_proba, _ = run_RandomForest(train_data, train_labels, test_data, test_labels)
+    run_RandomForest(train_data, train_labels, test_data, test_labels)
+
+
