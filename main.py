@@ -29,19 +29,18 @@ Y = []
 station = []
 
 # optional variables
-normalize_type = 1  # 1 is min max normalization and 2 is standard normalization
 visualize = 0
 sample_mode = 0  # 1: undersample, 2: oversample
 convert_1_hour_period = 0  # 1: if convert to one hour period, not necessary
 filter_data = 1
-
-n_features = 0
 test_mode = 0
-minority_scale = 1
-rain_threshold = 1  # inch
-run_rnn_mode = 1
+run_rnn_mode = 0
 nearby_station_mode = 1 # 1 if consider nearby station RAIN values
 run_mode = 1  # 1: for classify mode, 2: for regression mode
+
+n_features = 0
+minority_scale = 1
+rain_threshold = 0.4  # inch 0.4 in = 1 cm
 
 # Hyper-parameter variables
 time_series_length = 50
@@ -49,21 +48,19 @@ batch_size = 32
 window_size = 6
 percent_of_testing = 0.1
 nb_epochs = 100
-stations = ['CARL', 'VANO', 'WEBR', 'LANE']
-time_before_rain_day = 288  # * 5 min: 288 * 5 = 1 day before
+stations = ['CARL', 'LANE', 'VANO', 'WEBR']
 test_station = 'LANE'
+start_date = '2009-01-01'
 
 
-def read_data(window_size): # read data and load into global variables
+def read_data(window_size=6):  # read data and load into global variables
 
-    global list_features, X, Y, station
+    global list_features, station
 
     df = pd.read_csv('dataset/All_WEBR_VANO_KING_CARL_LANE_2009.csv');
 
-
     station = 'CARL'
 
-    date = '2009-01-01'
     list_features_raw = list(df.columns.values)
     list_features = [x for x in list_features_raw if not x.startswith('Q')]
     list_soil_temp_features = ['RAIN','TS05', 'TB05', 'TS10', 'TB10', 'TS30', 'BATV']
@@ -73,21 +70,20 @@ def read_data(window_size): # read data and load into global variables
 
     # Get complete data with clean RAIN
     df = df.sort_values(by=['STID','Year', 'Month', 'Day', 'Time'])
-    date = '2009-06-12'
+    date = '2009-01-01'
 
-    if test_mode:
-        #--------------------------------------------
-        # Filter some information
-        df = df[
+    # --------------------------------------------
+    # Filter some information
+    df = df[
         #         (df.QRAIN == 0)
-        #          (df.STID == station)
+        (df.STID != 'KING')
         #         & (df.Month >= 6)
-                 (df.Date == date)
+        #        &  (df.Date == date)
         #         & (df.Day >= 11)
         #         & (df.Day <= 14)
         #         & (df.Month <= 6)
-                ]
-        #--------------------------------------------
+    ]
+    #--------------------------------------------
 
     rain_index = list_features_raw.index('RAIN')
     time_index = list_features_raw.index('Time')
@@ -154,24 +150,6 @@ def read_data(window_size): # read data and load into global variables
         X = np.append(X, change_feature,1)
         temp_list.append('C'+feature)
 
-        if visualize:
-            plt.figure(2*i)
-            plt.title(feature + ' vs. RAIN at station: '+ station + ' on ' + date)
-            plt.plot(data[:, time_index], feature_data, 'r', label=feature)
-            plt.plot(np.arange(0,n_rows), change_feature, 'r', label='change in '+feature)
-            plt.plot(np.arange(0,n_rows), real_Y, 'b', label='RAIN')
-            plt.legend(loc='best')
-            plt.savefig('images/'+feature+'_vs_rain at station: '+ station + ' on ' + date)
-
-            plt.figure(2*i+1)
-            plt.title(feature + ' vs. RAIN in log scale at station: '+ station)
-            plt.plot(np.arange(0,n_rows), np.log(feature_data.astype(float)), 'r', label=feature)
-            plt.plot(np.arange(0,n_rows), real_Y, 'b', label='RAIN')
-            plt.legend(loc='best')
-            plt.savefig('images/'+feature+'_vs_rain in log scale at station: '+ station)
-
-            plt.show()
-
     list_features.append(temp_list)
 
     # visualize_data('RAIN', Y)
@@ -206,11 +184,16 @@ def read_data(window_size): # read data and load into global variables
 
         Y = np.copy(Y_new)
 
+    # convert the data to Recurrent Network
+
     station_values = {}
     for s in stations:
-        station_values[s] = Y[data[:, station_index] == s]
+        station_values[s] = data[data[:, station_index] == s, rain_index]
 
-    # convert the data to Recurrent Network
+    station_start_indices = {}
+    for s in stations:
+        station_start_indices[s] = np.where(
+            (data[:, station_index] == s) & (data[:, date_index] == start_date) & (data[:, time_index] == 0))
 
     if run_rnn_mode == 1:
 
@@ -224,7 +207,9 @@ def read_data(window_size): # read data and load into global variables
                 if i - 50 < 0: continue
 
                 range_indices = range(i-time_series_length,i)
-                station_own_values = X[range_indices,:]
+
+                station_own_values = X[range(i - time_series_length + station_start_indices[station],
+                                             i + station_start_indices[station]), :]
 
                 if nearby_station_mode:
                     nearby_stations_value = np.transpose([station_values[s][range_indices] for s in nearby_stations])
@@ -240,6 +225,54 @@ def read_data(window_size): # read data and load into global variables
 
         if run_mode == 1:
             Y = np_utils.to_categorical(Y, 2)
+
+    # Add data for model 2
+
+    X_new = []
+    Y_new = []
+
+    for station in stations:
+        nearby_stations = get_nearby_stations(station, 3)
+
+        for i, y in enumerate(station_values[station]):
+            values = [station_values[s][i] for s in nearby_stations]
+
+            X_new.append(values)
+            Y_new.append(y)
+
+    X_2 = np.array(X_new)
+
+    if run_mode == 1:
+        Y_2 = (np.array(Y_new) > 0).astype(int)
+    else:
+        Y_2 = np.array(Y_new)
+
+    # Add data for model 3
+
+    X_new = []
+    Y_new = []
+
+    for station in stations:
+        nearby_stations = get_nearby_stations(station, 3)
+
+        for i, y in enumerate(station_values[station]):
+            station_own_values = X[station_start_indices[station][0] + i, :][0]
+
+            # station_own_values = X[range_indices,:]
+            nearby_stations_value = np.transpose([station_values[s][i] for s in nearby_stations])
+            values = np.append(station_own_values, nearby_stations_value)
+
+            X_new.append(values)
+            Y_new.append(y)
+
+    X_3 = np.array(X_new)
+
+    if run_mode == 1:
+        Y_3 = (np.array(Y_new) > 0).astype(int)
+    else:
+        Y_3 = np.array(Y_new)
+
+    return X, Y, X_2, Y_2, X_3, Y_3
 
 
 def get_nearby_stations(station, number):
@@ -267,12 +300,9 @@ def visualize_data(feature_name, feature_data):
     pass
 
 
-def process_data(minority_scale):
-    global train_data, train_labels, test_data, test_labels
-
-    random_indices = np.random.permutation(X.shape[0])
-    new_X = X[random_indices]
-    new_Y = Y[random_indices]
+def process_data(X, Y, permutation, minority_scale=1):
+    new_X = X[permutation]
+    new_Y = Y[permutation]
 
     test_index = int(X.shape[0]*(1-percent_of_testing))
 
@@ -288,23 +318,7 @@ def process_data(minority_scale):
     test_data -= mean_data
     test_data /= std_data
 
-    # # sample data for balance between classes
-    # train_rain_examples = train_data[train_labels == 1,:]
-    # train_non_rain_examples = (train_data[train_labels == 0, :])
-    #
-    # if sample_mode == 1: # under sample
-    #     n_train_non_rain_examples = train_non_rain_examples.shape[0]
-    #     train_non_rain_examples_new = train_non_rain_examples[:int(n_train_non_rain_examples*1/50),:]
-    #     train_data = np.concatenate((train_rain_examples, train_non_rain_examples_new))
-    #     train_labels = np.concatenate((np.ones(train_rain_examples.shape[0]), np.zeros(train_non_rain_examples_new.shape[0])))
-    #
-    #     pass
-    #
-    # elif sample_mode == 2 and minority_scale != 1: # over sample
-    #     train_rain_examples_new = SMOTE(train_rain_examples, minority_scale*100, 5)
-    #     train_data = np.concatenate((train_data, train_rain_examples_new))
-    #     train_labels = np.concatenate((train_labels, np.ones((train_rain_examples_new.shape[0]))))
-    #     pass
+    return train_data, train_labels, test_data, test_labels
 
 
 def find_important_features(window_size):
@@ -348,11 +362,10 @@ def find_important_features(window_size):
     pass
 
 
-def compute_metrics(predict_Y, predict_Y_proba):
-
-    if test_labels.shape[1] == 2:
-        temp_test_labels = (test_labels[:, 1] > test_labels[:, 0]).astype(int)
-        predict_Y_proba = predict_Y_proba[:,0]
+def compute_metrics(predict_Y, predict_Y_proba, test_labels):
+    if run_rnn_mode:
+        temp_test_labels = np.argmax(test_labels, axis=1)
+        predict_Y_proba = predict_Y_proba[:, temp_test_labels]
     else:
         temp_test_labels = test_labels
 
@@ -360,9 +373,10 @@ def compute_metrics(predict_Y, predict_Y_proba):
     from sklearn.metrics import precision_recall_fscore_support, \
     roc_curve, auc, accuracy_score, confusion_matrix
 
-    fpr_rf, tpr_rf, _ = roc_curve(temp_test_labels, predict_Y_proba, pos_label=0)
+    fpr_rf, tpr_rf, _ = roc_curve(temp_test_labels, predict_Y_proba, pos_label=1)
     auc_score = auc(fpr_rf, tpr_rf)
-    precision, recall, fscore, _ = precision_recall_fscore_support(temp_test_labels, predict_Y, average='binary',pos_label=0)
+    precision, recall, fscore, _ = precision_recall_fscore_support(temp_test_labels, predict_Y, average='binary',
+                                                                   pos_label=1)
     accuracy = accuracy_score(temp_test_labels, predict_Y)
     confusion = confusion_matrix(temp_test_labels, predict_Y)
 
@@ -385,7 +399,7 @@ def compute_metrics(predict_Y, predict_Y_proba):
     pass
 
 
-def run_RandomForest():
+def run_RandomForest(train_data, train_labels, test_data, test_labels):
     from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
     if run_mode == 1: # Classifion mode
@@ -394,7 +408,9 @@ def run_RandomForest():
         predict_Y = clf.fit(train_data, train_labels).predict(test_data)
         predict_Y_proba = clf.predict_proba(test_data)[:,1]
 
-        [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba)
+        [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba, test_labels)
+
+        return predict_Y, predict_Y_proba, [precision, recall, fscore]
 
     elif run_mode == 2: # Regression Mode
         clf = RandomForestRegressor()
@@ -409,7 +425,7 @@ def run_RandomForest():
         return mse
 
 
-def run_RNN():
+def run_RNN(train_data, train_labels, test_data, test_labels):
 
     rnn = 'SimpleRNN'
     early_stopping = EarlyStopping(monitor='val_error', patience=1)
@@ -418,22 +434,27 @@ def run_RNN():
         model = Sequential()
         model.add(getattr(layers, rnn)(512, input_shape=(time_series_length, train_data.shape[2]), return_sequences=False))
         model.add(Dense(2, activation='softmax'))
+
+        model.load_weights(
+            'models/models_weights_windows_' + str(window_size) + '_time_length_' + str(time_series_length) + '.h5')
+
         model.compile(loss='binary_crossentropy', optimizer='adagrad')
 
-        model.fit(train_data, train_labels, batch_size=batch_size, nb_epoch=nb_epochs,
-              callbacks=[early_stopping],validation_data=(test_data, test_labels),show_accuracy=True)
+        # model.fit(train_data, train_labels, batch_size=batch_size, nb_epoch=nb_epochs,
+        #       callbacks=[early_stopping],validation_data=(test_data, test_labels),show_accuracy=True)
 
-        model.save_weights('models/models_weights_windows_' + str(window_size) + '_time_length_' + str(time_series_length)+'.h5')
+        # model.save_weights('models/models_weights_windows_' + str(window_size) + '_time_length_' + str(time_series_length)+'.h5')
 
-        # predict_Y = model.predict_classes(test_data)
-        #
-        # predict_Y_proba = model.predict_proba(test_data)
-        #
-        # [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba)
+        predict_Y = model.predict_classes(test_data)
+        predict_Y_proba = model.predict_proba(test_data)
+        [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba, test_labels)
+
+        return predict_Y, predict_Y_proba, [precision, recall, fscore]
 
     else: # regression mode
         model = Sequential()
-        model.add(getattr(layers, rnn)(512, input_shape=(time_series_length, n_features), return_sequences=False))
+        model.add(
+            getattr(layers, rnn)(512, input_shape=(time_series_length, train_data.shape[2]), return_sequences=False))
         model.add(Dense(1))
         model.compile(loss='mse', optimizer='adagrad')
 
@@ -453,30 +474,52 @@ def run_RNN():
 if __name__ == "__main__":
 
     np.random.seed(1991)
-    minority_scales = range(10, 100, 10)
     window_sizes = range(0,30)
 
-    read_data(window_size)
-    process_data(minority_scale)
+    thresholds = range(0, 10)
 
-    run_RNN()
-
-    # list_results = np.empty((len(window_sizes),3))
+    # read_data(window_size)
+    # process_data(minority_scale)
     #
-    # for i, window_size in enumerate(window_sizes):
-    #     read_data(window_size)
-    #     process_data(minority_scale)
-    #     list_results[i,:] = run(window_size)
+    # if run_rnn_mode == 1:
+    #     run_RNN()
+    # else:
+    #     run_RandomForest()
+
+    # list_results = np.empty((len(thresholds),3))
+    #
+    # for i, rain_threshold in enumerate(thresholds):
+    #
+    #     list_results[i,:] = run_RandomForest()
     #
     # # # print different window size
     # plt.figure(2)
-    # plt.plot(window_sizes, list_results[:,0], label='precision')
-    # plt.plot(window_sizes, list_results[:,1], label='recall')
-    # plt.plot(window_sizes, list_results[:,2], label='fscore')
-    # plt.xlabel('Windows Size')
+    # plt.plot(thresholds, list_results[:,0], label='precision')
+    # plt.plot(thresholds, list_results[:,1], label='recall')
+    # plt.plot(thresholds, list_results[:,2], label='fscore')
+    # plt.xlabel('Threshold Size')
     # plt.ylabel('Percent')
     # plt.title('Precision, Recall, F1')
     # plt.legend(loc='best')
-    # plt.savefig('images/Result_windowsize.png')
+    # plt.savefig('images/Result_with_Thresholds.png')
     #
     # print list_results
+
+    X, Y, X_2, Y_2, X_3, Y_3 = read_data()
+
+    permutation = np.random.permutation(X.shape[0])
+
+    print("Run with Station own data only")
+    train_data, train_labels, test_data, test_labels = process_data(X, Y, permutation)
+
+    predict_Y, predict_Y_proba, _ = run_RandomForest(train_data, train_labels, test_data, test_labels)
+
+    print("Run with Nearby Stations data")
+    train_data, train_labels, test_data, test_labels = process_data(X_2, Y_2, permutation)
+
+    predict_Y_2, predict_Y_2_proba, _ = run_RandomForest(train_data, train_labels, test_data, test_labels)
+
+    print("Combine 2 result internally")
+    train_data, train_labels, test_data, test_labels = process_data(X_3, Y_3, permutation)
+
+    predict_Y_3, predict_Y_3_proba, _ = run_RandomForest(train_data, train_labels, test_data, test_labels)

@@ -89,8 +89,30 @@ def SMOTE(T, N, k):
             while nn_index == i:
                 nn_index = choice(nn[0])
 
+
             dif = T[nn_index] - T[i]
             gap = np.random.random()
             S[n + i * N, :] = T[i,:] + gap * dif[:]
 
     return S
+
+def process():
+        # # sample data for balance between classes
+    # train_rain_examples = train_data[train_labels == 1,:]
+    # train_non_rain_examples = (train_data[train_labels == 0, :])
+    #
+    # if sample_mode == 1: # under sample
+    #     n_train_non_rain_examples = train_non_rain_examples.shape[0]
+    #     train_non_rain_examples_new = train_non_rain_examples[:int(n_train_non_rain_examples*1/50),:]
+    #     train_data = np.concatenate((train_rain_examples, train_non_rain_examples_new))
+    #     train_labels = np.concatenate((np.ones(train_rain_examples.shape[0]), np.zeros(train_non_rain_examples_new.shape[0])))
+    #
+    #     pass
+    #
+    # elif sample_mode == 2 and minority_scale != 1: # over sample
+    #     train_rain_examples_new = SMOTE(train_rain_examples, minority_scale*100, 5)
+    #     train_data = np.concatenate((train_data, train_rain_examples_new))
+    #     train_labels = np.concatenate((train_labels, np.ones((train_rain_examples_new.shape[0]))))
+    #     pass
+
+    pass
