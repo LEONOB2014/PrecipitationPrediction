@@ -19,19 +19,14 @@ X = []
 Y = []
 station = []
 
-# optional variables
-run_mode = 0  # 1: for classify mode, 2: for regression mode
+# Control mode variables
+run_mode = 1  # 1: for classification mode, 0: for regression mode
 filter_data = 1 #  USEFUL
 add_change_data = 0 # NOT USEFUL
 use_window_mode = 1 # USEFUL for X, Y raw data
-convert_1_hour_period = 0  # 1: if convert to one hour period, NOT USEFUL
 
 visualize = 0
 test_mode = 0
-run_rnn_mode = 0
-
-n_features = 0
-minority_scale = 1
 
 # Hyper-parameter variables
 time_series_length = 50
@@ -103,36 +98,9 @@ def read_data(window_size=6):  # read data and load into global variables
     else:
         Y = real_Y
 
-    # convert to 1 hour period
-    if convert_1_hour_period:
-        X_new = []
-        Y_new = []
-
-        count_example = 0
-
-        for i in range(0, X.shape[0]):
-
-            if np.mod(int(data[i, time_index]), 100) == 0:
-                one_hour_data_X = np.mean(X[range(i,i+12),:], axis=0).reshape((1,len(list_features)))
-                one_hour_data_Y = np.sum(real_Y[range(i, i+12)], axis=0)
-                X_new.append(one_hour_data_X)
-                Y_new.append(one_hour_data_Y)
-                count_example += 1
-            else:
-                pass
-
-        X = np.reshape(X_new,(count_example, len(list_features)))
-
-        if run_mode == 1:
-            Y = (np.array(Y_new) > 0).astype(int)
-        else:
-            Y = np.copy(Y_new)
-
-        n_rows = count_example
-
-    temp_list = []
-
     if add_change_data:
+        temp_list = []
+
         # get and add change feature to list feature
         for i, feature in enumerate(list_features):
 
@@ -175,7 +143,6 @@ def read_data(window_size=6):  # read data and load into global variables
             Y = (np.array(Y_new) > 0).astype(int)
         else:
             Y = np.array(Y_new)
-
 
     station_start_indices = {}
     for s in stations:
@@ -260,7 +227,7 @@ def visualize_data(feature_name, feature_data):
     pass
 
 
-def process_data(X, Y, permutation, minority_scale=1):
+def process_data(X, Y, permutation):
     new_X = X[permutation]
     new_Y = Y[permutation]
 
@@ -281,53 +248,8 @@ def process_data(X, Y, permutation, minority_scale=1):
     return train_data, train_labels, test_data, test_labels
 
 
-def find_important_features(train_data, train_labels, test_data, test_labels, window_size):
-    from sklearn.ensemble import RandomForestClassifier
-    # train by Random Forest
-    clf = RandomForestClassifier(n_estimators=10, max_depth=None, min_samples_split=1, random_state=0)
-    forest = clf
-
-    X = np.concatenate((train_data, test_data), axis=0)
-    Y = np.concatenate((train_labels, test_labels), axis=0)
-
-    forest.fit(X, Y)
-
-    importances = forest.feature_importances_
-
-    std = np.std([tree.feature_importances_ for tree in forest.estimators_],
-                 axis=0)
-    indices = np.argsort(importances)[::-1]
-    sorted_list_features = [list_features[x] for x in indices]
-
-    # Print the feature ranking
-    print("Feature ranking:")
-
-    for f in range(X.shape[1]):
-        print("%d. feature %d (%f)" % (f, indices[f], importances[indices[f]]))
-
-    # Plot the feature importances of the forest
-    plt.figure(2)
-
-    plt.title("Feature importances All Data at window size = " + str(window_size))
-
-    plt.bar(range(X.shape[1]), importances[indices],
-           color="r", yerr=std[indices], align="center")
-    plt.xticks(range(X.shape[1]), sorted_list_features)
-    plt.xlim([-1, X.shape[1]])
-
-    plt.savefig('images/importance_features_data_window_size_' + str(window_size) + '.png')
-
-    # plt.show()
-
-    pass
-
-
-def compute_metrics(predict_Y, predict_Y_proba, test_labels):
-    if run_rnn_mode:
-        temp_test_labels = np.argmax(test_labels, axis=1)
-        predict_Y_proba = predict_Y_proba[:,1]
-    else:
-        temp_test_labels = test_labels
+def compute_metrics(predict_Y, predict_Y_proba, test_labels, text):
+    temp_test_labels = test_labels
 
     # compute metrics
     from sklearn.metrics import precision_recall_fscore_support, \
@@ -348,18 +270,18 @@ def compute_metrics(predict_Y, predict_Y_proba, test_labels):
 
     plt.figure(1)
     plt.plot([0, 1], [0, 1], 'k--')
-    plt.plot(fpr_rf, tpr_rf, label='RF')
+    plt.plot(fpr_rf, tpr_rf, label=text)
     plt.xlabel('False positive rate')
     plt.ylabel('True positive rate')
-    plt.title('ROC curve at window size = ' + str(window_size) )
+    plt.title('ROC curve')
     plt.legend(loc='best')
-    plt.savefig('images/ROC_curve_window_size_' + str(window_size) + '.png')
+    plt.savefig('images/ROC_curve.png')
 
     return [precision, recall, fscore]
     pass
 
 
-def run_RandomForest(train_data, train_labels, test_data, test_labels):
+def run_RandomForest(train_data, train_labels, test_data, test_labels, text):
     from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
     if run_mode == 1: # Classifion mode
@@ -368,7 +290,7 @@ def run_RandomForest(train_data, train_labels, test_data, test_labels):
         predict_Y = clf.fit(train_data, train_labels).predict(test_data)
         predict_Y_proba = clf.predict_proba(test_data)[:,1]
 
-        [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba, test_labels)
+        [precision, recall, fscore] = compute_metrics(predict_Y, predict_Y_proba, test_labels, text)
 
         return predict_Y, predict_Y_proba, [precision, recall, fscore]
 
@@ -399,16 +321,14 @@ if __name__ == "__main__":
     print("Run with Station own data only")
     train_data, train_labels, test_data, test_labels = process_data(X, Y, permutation)
 
-    run_RandomForest(train_data, train_labels, test_data, test_labels)
+    run_RandomForest(train_data, train_labels, test_data, test_labels, 'Method 3')
 
     print("Run with Nearby Stations data")
     train_data, train_labels, test_data, test_labels = process_data(X_2, Y_2, permutation)
 
-    run_RandomForest(train_data, train_labels, test_data, test_labels)
+    run_RandomForest(train_data, train_labels, test_data, test_labels, 'Method 5')
 
     print("Combine 2 results internally")
     train_data, train_labels, test_data, test_labels = process_data(X_3, Y_3, permutation)
 
-    run_RandomForest(train_data, train_labels, test_data, test_labels)
-
-
+    run_RandomForest(train_data, train_labels, test_data, test_labels, 'Method 6')

@@ -238,3 +238,44 @@ def process():
     # plt.savefig('images/Result_with_Thresholds.png')
     #
     # print list_results
+
+
+        # def find_important_features(train_data, train_labels, test_data, test_labels, window_size=0):
+        #     from sklearn.ensemble import RandomForestClassifier
+        #     # train by Random Forest
+        #     clf = RandomForestClassifier(n_estimators=10, max_depth=None, min_samples_split=1, random_state=0)
+        #     forest = clf
+        #
+        #     X = np.concatenate((train_data, test_data), axis=0)
+        #     Y = np.concatenate((train_labels, test_labels), axis=0)
+        #
+        #     forest.fit(X, Y)
+        #
+        #     importances = forest.feature_importances_
+        #
+        #     std = np.std([tree.feature_importances_ for tree in forest.estimators_],
+        #                  axis=0)
+        #     indices = np.argsort(importances)[::-1]
+        #     sorted_list_features = [list_features[x] for x in indices]
+        #
+        #     # Print the feature ranking
+        #     print("Feature ranking:")
+        #
+        #     for f in range(X.shape[1]):
+        #         print("%d. feature %d (%f)" % (f, indices[f], importances[indices[f]]))
+        #
+        #     # Plot the feature importances of the forest
+        #     plt.figure(2)
+        #
+        #     plt.title("Feature importances All Data at window size = " + str(window_size))
+        #
+        #     plt.bar(range(X.shape[1]), importances[indices],
+        #            color="r", yerr=std[indices], align="center")
+        #     plt.xticks(range(X.shape[1]), sorted_list_features)
+        #     plt.xlim([-1, X.shape[1]])
+        #
+        #     plt.savefig('images/importance_features_data_window_size_' + str(window_size) + '.png')
+        #
+        #     # plt.show()
+        #
+        #     pass
